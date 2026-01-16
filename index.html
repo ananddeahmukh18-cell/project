@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LDT-1: Secure AirDrop</title>
+    <title>LDT-1: Secure Share</title>
     <style>
         :root {
             --bg: #0f172a;
@@ -20,46 +20,83 @@
             margin: 0;
             padding: 20px;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             align-items: center;
             min-height: 100vh;
         }
-        .container { width: 100%; max-width: 500px; }
-        
-        /* LOGIN / HEADER */
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
+        .container { 
+            width: 100%; 
+            max-width: 480px; 
+            background: var(--bg);
         }
+        
+        /* LOGIN SCREEN */
+        #login-screen {
+            text-align: center;
+            background: var(--card);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+        input[type="text"] {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            width: 100%;
+            margin: 20px 0;
+            font-size: 1.1em;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* DASHBOARD (HIDDEN INITIALLY) */
+        #dashboard { display: none; }
+
+        .header { text-align: center; margin-bottom: 30px; }
         .my-id-badge {
             background: var(--card);
             border: 1px solid var(--border);
             padding: 8px 16px;
             border-radius: 20px;
             font-family: monospace;
-            font-size: 1.1em;
+            font-size: 1.2em;
             color: var(--accent);
             display: inline-block;
             margin-top: 10px;
         }
 
-        /* RADAR (USER DISCOVERY) */
+        /* RADAR ZONE */
         .radar-zone {
             background: var(--card);
             border-radius: 16px;
             padding: 20px;
-            min-height: 200px;
+            min-height: 250px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             text-align: center;
             border: 1px solid var(--border);
             position: relative;
-            overflow: hidden;
         }
         .radar-pulse {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 100px; height: 100px;
+            width: 50px; height: 50px;
             border-radius: 50%;
             border: 2px solid var(--accent);
             opacity: 0;
@@ -67,8 +104,8 @@
             pointer-events: none;
         }
         @keyframes pulse {
-            0% { width: 50px; height: 50px; opacity: 0.8; }
-            100% { width: 300px; height: 300px; opacity: 0; }
+            0% { width: 20px; height: 20px; opacity: 0.8; }
+            100% { width: 250px; height: 250px; opacity: 0; }
         }
 
         /* PEER LIST */
@@ -78,7 +115,7 @@
             margin-top: 20px;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 15px;
         }
         .peer-item {
             background: #334155;
@@ -96,7 +133,7 @@
             background: #475569;
         }
         .peer-avatar {
-            width: 40px; height: 40px;
+            width: 45px; height: 45px;
             background: var(--green);
             border-radius: 50%;
             margin-bottom: 10px;
@@ -104,185 +141,226 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            color: black;
+            color: #0f172a;
+            font-size: 1.2em;
         }
 
-        /* FILE INPUT (HIDDEN INITIALLY) */
         #file-input { display: none; }
         
-        /* LOGS */
         .logs {
             margin-top: 20px;
             font-family: monospace;
             font-size: 12px;
             color: #94a3b8;
-            width: 100%;
-            text-align: left;
-            height: 100px;
+            background: #000;
+            padding: 10px;
+            border-radius: 8px;
+            height: 120px;
             overflow-y: auto;
-            border-top: 1px solid var(--border);
-            padding-top: 10px;
+            border: 1px solid var(--border);
+        }
+        
+        .status-msg {
+            margin-top: 10px;
+            font-weight: bold;
+            color: var(--accent);
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="header">
-        <h1>LDT-1 Secure Share</h1>
-        <div>Your Permanent ID:</div>
-        <div class="my-id-badge" id="my-address">Loading...</div>
+    
+    <div id="login-screen">
+        <h1>LDT-1 Share</h1>
+        <p style="color:#94a3b8">Secure Local File Transfer</p>
+        <input type="text" id="username-input" placeholder="Enter a Username" />
+        <button onclick="login()">Enter Network</button>
     </div>
 
-    <div class="radar-zone">
-        <div class="radar-pulse"></div>
-        <h3>Nearby Devices</h3>
-        <p style="color:#94a3b8; font-size: 0.9em;">Tap a user to send a file</p>
-        
-        <ul class="peer-list" id="peer-list">
-            </ul>
-        
-        <div id="loading-msg">Scanning...</div>
-    </div>
+    <div id="dashboard">
+        <div class="header">
+            <div>Your Permanent ID</div>
+            <div class="my-id-badge" id="my-address">...</div>
+        </div>
 
-    <input type="file" id="file-input" />
+        <div class="radar-zone">
+            <div class="radar-pulse"></div>
+            <h3>Nearby Users</h3>
+            <p style="color:#94a3b8; font-size: 0.9em;">Click a user to send a file</p>
+            
+            <ul class="peer-list" id="peer-list">
+                </ul>
+            <div id="status-display" class="status-msg">Scanning...</div>
+        </div>
 
-    <div class="logs" id="console">
-        <div>> System Initialized</div>
+        <input type="file" id="file-input" />
+
+        <div class="logs" id="console">
+            <div>> System Ready. Waiting for login...</div>
+        </div>
+        
+        <button onclick="logout()" style="margin-top:20px; background:#ef4444;">Logout</button>
     </div>
 </div>
 
 <script>
-    // --- 1. IDENTITY & PERSISTENCE ---
-    // Check if user has an address, if not generate and save it
-    let myID = localStorage.getItem('ldt_user_id');
-    if (!myID) {
-        // Generate a random 6-char hex ID
-        myID = 'User-' + Math.floor(Math.random()*16777215).toString(16).toUpperCase();
-        localStorage.setItem('ldt_user_id', myID);
+    // --- GLOBAL STATE ---
+    let myID = null;
+    let peerConnection = null;
+    let dataChannel = null;
+    let incomingChunks = [];
+    const peers = new Set();
+    const network = new BroadcastChannel('ldt_airdrop_v2');
+
+    // --- 1. LOGIN SYSTEM ---
+    
+    // Check localStorage on load
+    const savedID = localStorage.getItem('ldt_username');
+    if (savedID) {
+        myID = savedID;
+        showDashboard();
     }
-    document.getElementById('my-address').innerText = myID;
 
-    // --- 2. DISCOVERY (BROADCAST CHANNEL) ---
-    // Simulates "Local Network" discovery like AirDrop
-    const network = new BroadcastChannel('ldt_airdrop_net');
-    const peers = new Set(); // Stores online users
-
-    // Announce myself every 3 seconds
-    setInterval(() => {
-        network.postMessage({ type: 'presence', id: myID });
-    }, 3000);
-    // Announce immediately on load
-    network.postMessage({ type: 'presence', id: myID });
-
-    // Listen for others
-    network.onmessage = (event) => {
-        const data = event.data;
+    function login() {
+        const input = document.getElementById('username-input').value.trim();
+        if (!input) return alert("Please enter a username");
         
-        // 1. PRESENCE (Discovery)
-        if (data.type === 'presence' && data.id !== myID) {
-            if (!peers.has(data.id)) {
-                peers.add(data.id);
-                renderPeer(data.id);
-                log(`Found peer: ${data.id}`);
+        myID = input;
+        localStorage.setItem('ldt_username', myID); // Save permanently
+        showDashboard();
+    }
+
+    function logout() {
+        localStorage.removeItem('ldt_username');
+        location.reload();
+    }
+
+    function showDashboard() {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        document.getElementById('my-address').innerText = myID;
+        log(`Logged in as: ${myID}`);
+        startDiscovery();
+    }
+
+    // --- 2. DISCOVERY (RADAR) ---
+    
+    function startDiscovery() {
+        // Announce presence immediately & periodically
+        const announce = () => network.postMessage({ type: 'presence', id: myID });
+        announce();
+        setInterval(announce, 3000);
+
+        // Listen for others
+        network.onmessage = (event) => {
+            const data = event.data;
+            if (data.id === myID) return; // Ignore self
+
+            // A. Discovery
+            if (data.type === 'presence') {
+                if (!peers.has(data.id)) {
+                    peers.add(data.id);
+                    renderPeer(data.id);
+                    log(`New User Found: ${data.id}`);
+                }
             }
-        }
-        
-        // 2. SIGNALING (WebRTC Handshake)
-        if (data.target === myID) {
-            handleSignal(data);
-        }
-    };
+            
+            // B. Signaling (WebRTC Handshake)
+            if (data.target === myID) {
+                handleSignal(data);
+            }
+        };
+    }
 
     function renderPeer(peerID) {
-        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('status-display').innerText = "Users found";
         const list = document.getElementById('peer-list');
-        
         const li = document.createElement('li');
         li.className = 'peer-item';
         li.innerHTML = `
-            <div class="peer-avatar">${peerID.substring(5,7)}</div>
+            <div class="peer-avatar">${peerID.charAt(0).toUpperCase()}</div>
             <div>${peerID}</div>
         `;
-        li.onclick = () => selectFileAndSend(peerID);
+        li.onclick = () => initiateSend(peerID);
         list.appendChild(li);
     }
 
     // --- 3. SENDING LOGIC ---
     let targetPeer = null;
-    let peerConnection = null;
-    let dataChannel = null;
 
-    function selectFileAndSend(receiverID) {
+    function initiateSend(receiverID) {
         targetPeer = receiverID;
-        document.getElementById('file-input').click(); // Trigger file picker
+        document.getElementById('file-input').click();
     }
 
     document.getElementById('file-input').onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        log(`Preparing to send ${file.name} to ${targetPeer}...`);
+        log(`preparing to send ${file.name} to ${targetPeer}...`);
         
-        // A. Create Peer Connection
+        // Setup Sender PeerConnection
         const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         peerConnection = new RTCPeerConnection(config);
 
-        // B. Setup Data Channel
+        // Create Data Channel
         dataChannel = peerConnection.createDataChannel("file-transfer");
-        dataChannel.onopen = () => sendFile(file);
+        dataChannel.onopen = () => sendFileRaw(file);
 
-        // C. ICE Candidates
+        // ICE Handling
         peerConnection.onicecandidate = event => {
-            if (event.candidate) {
-                sendSignal(targetPeer, 'ice', event.candidate);
-            }
+            if (event.candidate) sendSignal(targetPeer, 'ice', event.candidate);
         };
 
-        // D. Create Offer
+        // Create Offer
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         sendSignal(targetPeer, 'offer', offer);
     };
 
-    function sendFile(file) {
-        log(`🚀 Sending data...`);
+    function sendFileRaw(file) {
+        log(`🚀 Sending ${file.name}...`);
+        document.getElementById('status-display').innerText = "Sending...";
+        
         const reader = new FileReader();
         reader.onload = (e) => {
             const buffer = e.target.result;
-            const CHUNK_SIZE = 16384;
+            const CHUNK_SIZE = 16384; // 16KB
             
-            // Send in chunks
             for(let i=0; i<buffer.byteLength; i+=CHUNK_SIZE) {
                 dataChannel.send(buffer.slice(i, i+CHUNK_SIZE));
             }
-            dataChannel.send('EOF'); // End of file marker
+            dataChannel.send('EOF'); // End Marker
             log(`✅ File Sent Successfully!`);
+            document.getElementById('status-display').innerText = "Sent!";
+            setTimeout(() => document.getElementById('status-display').innerText = "Scanning...", 2000);
         };
         reader.readAsArrayBuffer(file);
     }
 
     // --- 4. RECEIVING LOGIC ---
-    let incomingChunks = [];
-
+    
     async function handleSignal(data) {
-        if (!peerConnection) {
-            // Initialize Receiver
-            peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        // Initialize Receiver PC if not exists
+        if (!peerConnection || peerConnection.signalingState === 'closed') {
+            const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            peerConnection = new RTCPeerConnection(config);
             
             peerConnection.onicecandidate = event => {
                 if (event.candidate) sendSignal(data.sender, 'ice', event.candidate);
             };
 
             peerConnection.ondatachannel = event => {
+                log(`⚡ Connection from ${data.sender}`);
+                document.getElementById('status-display').innerText = `Receiving from ${data.sender}...`;
                 const channel = event.channel;
-                channel.onmessage = handleData;
-                log(`⚡ Connection established with ${data.sender}`);
+                channel.onmessage = handleIncomingData;
             };
         }
 
         if (data.type === 'offer') {
-            log(`📥 Incoming request from ${data.sender}...`);
+            log(`📥 Incoming Offer from ${data.sender}`);
             await peerConnection.setRemoteDescription(data.payload);
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
@@ -296,22 +374,31 @@
         }
     }
 
-    function handleData(event) {
+    function handleIncomingData(event) {
         if (event.data === 'EOF') {
-            log(`💾 File Received! Downloading...`);
+            log(`💾 File Complete. Downloading...`);
+            document.getElementById('status-display').innerText = "File Received!";
+            
             const blob = new Blob(incomingChunks);
             const url = URL.createObjectURL(blob);
+            
+            // Auto-trigger download
             const a = document.createElement('a');
             a.href = url;
-            a.download = `received_from_${Date.now()}`;
+            a.download = `received_${Date.now()}`;
+            document.body.appendChild(a);
             a.click();
-            incomingChunks = []; // Reset
+            document.body.removeChild(a);
+            
+            incomingChunks = []; // Reset buffer
+            setTimeout(() => document.getElementById('status-display').innerText = "Scanning...", 3000);
         } else {
             incomingChunks.push(event.data);
         }
     }
 
     // --- HELPERS ---
+    
     function sendSignal(target, type, payload) {
         network.postMessage({
             target: target,
@@ -323,9 +410,11 @@
 
     function log(msg) {
         const consoleDiv = document.getElementById('console');
-        consoleDiv.innerHTML += `<div>> ${msg}</div>`;
+        const time = new Date().toLocaleTimeString();
+        consoleDiv.innerHTML += `<div><span style="color:#64748b">[${time}]</span> ${msg}</div>`;
         consoleDiv.scrollTop = consoleDiv.scrollHeight;
     }
+
 </script>
 
 </body>
