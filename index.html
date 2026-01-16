@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LDT-1 Protocol (Simulated Node)</title>
+    <style>
+        :root { --bg: #0f172a; --text: #f8fafc; --accent: #3b82f6; --success: #22c55e; --panel: #1e293b; }
+        body { font-family: 'Courier New', monospace; background: var(--bg); color: var(--text); padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.5; }
+        h1, h2 { border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .panel { background: var(--panel); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #334155; }
+        input, button { width: 100%; padding: 12px; margin-top: 10px; background: #0f172a; border: 1px solid #475569; color: white; font-family: inherit; box-sizing: border-box; }
+        button { background: var(--accent); cursor: pointer; font-weight: bold; border: none; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        button:hover:not(:disabled) { opacity: 0.9; }
+        .log { background: #000; color: #4ade80; padding: 15px; height: 200px; overflow-y: auto; font-size: 12px; border-radius: 4px; border: 1px solid #334155; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; background: #334155; font-size: 0.8em; margin-bottom: 10px; }
+        .hash { color: #94a3b8; font-size: 0.8em; word-break: break-all; }
+        .blink { animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <h1>LDT-1 Protocol <span class="blink">_</span></h1>
+    <div class="status-badge" id="network-status">Network: LIVE (Local Simulation)</div>
+    
+    <div class="panel">
+        <h2>1. Node Identity</h2>
+        <p>Your Wallet Address:</p>
+        <div id="my-wallet" class="hash" style="color:var(--accent); font-size: 1.1em; margin-bottom:10px;">Generating...</div>
+        <small>Open this file in a <b>second tab</b> to simulate the Receiver.</small>
+    </div>
+
+    <div class="panel">
+        <h2>2. Data Transport</h2>
+        <input type="text" id="target-wallet" placeholder="Paste Receiver's Wallet Address (0x...)" />
+        <input type="file" id="file-input" />
+        <button id="send-btn" onclick="startTransfer()">Initiate LDT Transfer</button>
+    </div>
+
+    <div class="panel">
+        <h2>Protocol Logs</h2>
+        <div class="log" id="console-log"></div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CHUNK_SIZE = 16384; // 16KB chunks
+        const SIGNALING_CHANNEL = new BroadcastChannel('ldt_signaling');
+        const BLOCKCHAIN_KEY = 'ldt_mock_ledger';
+
+        // --- STATE ---
+        let myAddress = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(20))).map(b => b.toString(16).padStart(2, '0')).join('');
+        document.getElementById('my-wallet').innerText = myAddress;
+        
+        let peerConnection;
+        let dataChannel;
+        let fileChunks = [];
+
+        // --- UTILS ---
+        function log(msg) {
+            const el = document.getElementById('console-log');
+            const time = new Date().toLocaleTimeString();
+            el.innerHTML += `<div><span style="color:#64748b">[${time}]</span> ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function hashData(buffer) {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            return '0x' + Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // --- 1. MOCK BLOCKCHAIN ---
+        const Blockchain = {
+            register: (sender, receiver, merkleRoot) => {
+                const ledger = JSON.parse(localStorage.getItem(BLOCKCHAIN_KEY) || '[]');
+                ledger.push({ sender, receiver, root: merkleRoot, timestamp: Date.now() });
+                localStorage.setItem(BLOCKCHAIN_KEY, JSON.stringify(ledger));
+                log(`⛓️ [BLOCKCHAIN] Contract Interaction Confirmed.`);
+                log(`   Root: ${merkleRoot.substring(0, 20)}...`);
+            },
+            verify: (root) => {
+                const ledger = JSON.parse(localStorage.getItem(BLOCKCHAIN_KEY) || '[]');
+                return ledger.find(tx => tx.root === root);
+            }
+        };
+
+        // --- 2. SENDER LOGIC ---
+        async function startTransfer() {
+            const target = document.getElementById('target-wallet').value.trim();
+            const file = document.getElementById('file-input').files[0];
+
+            if (!target || !file) return alert("Missing Target Address or File");
+            if (target === myAddress) return alert("Cannot send to yourself (open a new tab)");
+
+            log(`🚀 Starting Transfer sequence...`);
+            
+            // A. Chunk & Hash (Merkle Proof simulation)
+            const buffer = await file.arrayBuffer();
+            const rootHash = await hashData(buffer); // Simplified Merkle for demo (Single Hash)
+            
+            log(`🔒 Generated Integrity Hash: ${rootHash.substring(0, 15)}...`);
+
+            // B. Register on Chain
+            Blockchain.register(myAddress, target, rootHash);
+
+            // C. Start WebRTC
+            initPeerConnection(target, true, buffer, rootHash);
+        }
+
+        // --- 3. WEBRTC & SIGNALING ---
+        async function initPeerConnection(target, isInitiator, fileBuffer = null, rootHash = null) {
+            log(`📡 Initializing WebRTC Peer Connection...`);
+            
+            const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            peerConnection = new RTCPeerConnection(config);
+
+            // ICE Candidates (Network Discovery)
+            peerConnection.onicecandidate = (event) => {
+                if(event.candidate) {
+                    sendSignal(target, 'ice', event.candidate);
+                }
+            };
+
+            if (isInitiator) {
+                // SENDER
+                dataChannel = peerConnection.createDataChannel("ldt-data");
+                dataChannel.onopen = () => sendFile(fileBuffer);
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sendSignal(target, 'offer', { sdp: offer, root: rootHash });
+            } else {
+                // RECEIVER
+                peerConnection.ondatachannel = (event) => {
+                    log(`⚡ P2P Data Channel Established!`);
+                    const channel = event.channel;
+                    channel.onmessage = handleDataMessage;
+                };
+            }
+        }
+
+        // Signaling Helper (BroadcastChannel acts as the WebSocket Server)
+        function sendSignal(target, type, payload) {
+            SIGNALING_CHANNEL.postMessage({
+                target: target,
+                sender: myAddress,
+                type: type,
+                payload: payload
+            });
+        }
+
+        // Listen for Signals
+        SIGNALING_CHANNEL.onmessage = async (event) => {
+            const data = event.data;
+            if (data.target !== myAddress) return; // Ignore messages not for me
+
+            if (!peerConnection) {
+                // If I'm receiving an offer, I need to start my connection object
+                // We pass the root hash from the offer to the receiver logic context if needed
+                await initPeerConnection(data.sender, false);
+            }
+
+            if (data.type === 'offer') {
+                log(`📨 Incoming Handshake from ${data.sender.substring(0,10)}...`);
+                window.expectedRoot = data.payload.root; // Store expected hash for verification
+                
+                await peerConnection.setRemoteDescription(data.payload.sdp);
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                sendSignal(data.sender, 'answer', answer);
+            } 
+            else if (data.type === 'answer') {
+                await peerConnection.setRemoteDescription(data.payload);
+            } 
+            else if (data.type === 'ice') {
+                await peerConnection.addIceCandidate(data.payload);
+            }
+        };
+
+        // --- 4. DATA TRANSFER & VERIFICATION ---
+        function sendFile(buffer) {
+            log(`📤 Sending Data Chunks (${buffer.byteLength} bytes)...`);
+            const CHUNK_SIZE = 16384; 
+            for (let i = 0; i < buffer.byteLength; i += CHUNK_SIZE) {
+                dataChannel.send(buffer.slice(i, i + CHUNK_SIZE));
+            }
+            dataChannel.send('EOF'); 
+            log(`✅ Data Transmission Complete.`);
+        }
+
+        async function handleDataMessage(event) {
+            if (event.data === 'EOF') {
+                log(`📥 File Received. Verifying Integrity...`);
+                const blob = new Blob(fileChunks);
+                const buffer = await blob.arrayBuffer();
+                
+                // RE-HASH
+                const calculatedHash = await hashData(buffer);
+                log(`🔍 Calculated Hash: ${calculatedHash.substring(0, 15)}...`);
+                
+                // VERIFY AGAINST BLOCKCHAIN (LocalStorage)
+                const onChainRecord = Blockchain.verify(calculatedHash);
+                
+                if (onChainRecord && calculatedHash === window.expectedRoot) {
+                    log(`✅ VERIFICATION SUCCESS: Matches On-Chain Record.`);
+                    log(`💾 Downloading file...`);
+                    downloadFile(blob);
+                } else {
+                    log(`❌ VERIFICATION FAILED: Hash mismatch or no chain record.`);
+                }
+                fileChunks = [];
+            } else {
+                fileChunks.push(event.data);
+            }
+        }
+
+        function downloadFile(blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ldt-received-file';
+            a.click();
+        }
+
+        log("Node Initialized. Waiting for input...");
+    </script>
+</body>
+</html>
